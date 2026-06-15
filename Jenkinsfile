@@ -20,20 +20,9 @@ pipeline {
             }
         }
 
-        stage('Unit Tests') {
+        stage('Tests') {
             steps {
-                sh 'mvn test -P ci -Dtest="*Test" -Dexclude="**/mockmvc_test/**"'
-            }
-            post {
-                always {
-                    junit '**/target/surefire-reports/*.xml'
-                }
-            }
-        }
-
-        stage('MockMvc Tests') {
-            steps {
-                sh 'mvn test -P ci -Dtest="*MvcTest"'
+                sh 'mvn test -P ci'
             }
             post {
                 always {
