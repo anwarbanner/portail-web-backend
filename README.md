@@ -1,551 +1,628 @@
-# Gestion des Normes - Backend API
+# Portail Web Backend — API REST Normes Internationales
 
-A comprehensive REST API for international standards (ISO, IEC, EN) management with role-based user authentication, advanced filtering, hierarchical ICS classification, and complete user administration system.
+API REST complète pour la gestion de normes internationales (ISO, IEC, EN) avec authentification JWT, gestion des abonnements SaaS, import Excel, stockage PDF et contrôle d'accès par rôles.
 
-**Tech Stack**: Spring Boot 3.x | PostgreSQL | JWT Security | Flyway | Spring Data JPA/Hibernate | Swagger/OpenAPI | Maven
-
----
-
-## 📋 Project Overview
-
-**Gestion des Normes** is a platform for managing international standards with advanced classification, user management, and robust security. It provides CRUD operations for standards (Normes), hierarchical ICS (International Classification for Standards) levels, and lookup tables with role-based access control.
-
-### Key Capabilities:
-- 📌 **Standards Management**: Full CRUD operations with multi-language support (French, English, German)
-- 👥 **User Management**: Complete user administration for admins with user CRUD, roles, and password management
-- 🏆 **ICS Hierarchy**: 3-level classification system with automatic code prefixing (e.g., `77` → `77.01` → `77.01.401`)
-- 🔐 **JWT Authentication**: Secure access with access tokens (15 min) and refresh tokens (14 days)
-- 🛡️ **Role-Based Access**: ADMIN (full access) and USER (read-only) roles with `@PreAuthorize` validation
-- 📊 **Pagination & Filtering**: Advanced filtering by reference, status, ICS levels with paginated results
-- 🔄 **Lookup Tables**: Manage STATUT, DOCUMENT_TYPE, COLLECTION, BRANCH, FAMILY, SUBFAMILY, FILTER categories
-- 📡 **API Documentation**: Full Swagger UI with OpenAPI 3.0 specification
+**Stack :** Spring Boot 4.0.5 | Java 17 | PostgreSQL | JWT (JJWT 0.11.5) | Flyway | Spring Data JPA | MapStruct | Lombok | Apache POI | Springdoc OpenAPI 3 | Maven
 
 ---
 
-## 🏗️ System Architecture
+## Architecture du projet
 
-### Package Structure
+### Structure des packages
+
 ```
 src/main/java/portail/web/backend/exemple/portail/web/backend/
-├── controller/          # REST API endpoints
-├── service/             # Business logic layer
-├── repository/          # Data access with JPA
-├── entity/              # Domain models
-├── dto/                 # Request/Response DTOs
-├── mapper/              # Entity-DTO mappers
-├── config/              # Application configuration
-├── security/            # JWT & security components
-├── exception/           # Global exception handling
-├── auth/                # Authentication endpoints
-└── user/                # User management (service, controller, DTO)
+├── abonnement/
+│   ├── controller/        # PlanAbonnementController, AbonnementController
+│   ├── service/           # PlanAbonnementService, AbonnementService, AbonnementGuard
+│   ├── repository/        # PlanAbonnementRepository, AbonnementRepository
+│   ├── entity/            # PlanAbonnement, Abonnement, StatutAbonnement
+│   ├── mapper/            # AbonnementMapper (MapStruct)
+│   └── dto/               # Requêtes et réponses abonnement
+├── paiement/
+│   ├── controller/        # PaiementController
+│   ├── service/           # PaiementService
+│   ├── repository/        # PaiementRepository
+│   ├── entity/            # Paiement, StatutPaiement, MethodePaiement
+│   ├── mapper/            # PaiementMapper (MapStruct)
+│   └── dto/
+├── consultation/
+│   ├── service/           # ConsultationService
+│   ├── repository/        # ConsultationRepository
+│   ├── entity/            # Consultation
+│   └── dto/
+├── auth/                  # AuthController + DTOs login/register
+├── user/                  # User, UserRepository, UserService, UserDetailsServiceImpl
+├── controller/            # NormeController, LookupController, AdminUserController, UserController
+├── service/               # NormeService, LookupService, NormeExcelImportService
+│   └── support/           # NormePdfStorage, NormeRelationResolver, LookupCatalog
+├── repository/            # NormeRepository + 10 LookupRepositories
+├── entity/                # Norme + AbstractLookupEntity + 10 entités lookup
+├── dto/                   # NormeRequest, NormeResponse, NormeImportReport, LookupRequest/Response
+├── mapper/                # NormeMapper, LookupMapper
+├── security/              # SecurityConfig, JwtService, JwtAuthenticationFilter
+├── config/                # OpenApiConfig, AdminUserInitializer
+├── exception/             # GlobalExceptionHandler + exceptions métier
+└── common/                # BaseTimestampEntity
 ```
 
-### Layered Architecture
-- **Controller Layer**: HTTP endpoints with request validation
-- **Service Layer**: Business logic, validation, data transformation
-- **Repository Layer**: Spring Data JPA with @EntityGraph for lazy-loading optimization
-- **Entity Layer**: JPA entities with relationships and constraints
-- **Security Layer**: JWT token generation/validation, role-based access
+### Architecture en couches
+
+- **Controller** : endpoints HTTP, validation des requêtes, `@PreAuthorize`
+- **Service** : logique métier, validation, orchestration
+- **Repository** : Spring Data JPA avec `@EntityGraph` pour le chargement optimisé
+- **Entity** : entités JPA avec contraintes et relations
+- **Security** : JWT stateless, CSRF désactivé, CORS configuré
 
 ---
 
-## 🎯 Key Features
+## Fonctionnalités
 
-### Authentication & Authorization
-- **JWT-based Authentication**: `/api/auth/register` and `/api/auth/login`
-- **Token Management**: Access tokens (15 min expiry) + Refresh tokens (14 days)
-- **Role-Based Access Control**: 
-  - `ROLE_ADMIN`: Full CRUD access to standards, lookups, and users
-  - `ROLE_USER`: Read-only access to standards and lookups
-- **Password Encryption**: BCrypt encoding with salt
-- **Auto-Admin Seeding**: Optional pre-configured admin user (disable in production)
+### Authentification JWT
 
-### Standards (Norme) Management
-- **Full CRUD Operations**: Create, read, update, delete standards
-- **Multi-language Support**: French (titreFr, descripteurFr), English (titreEn, descripteurEn), German (titreDe)
-- **Rich Metadata**: Publication date, document type, collection, print info, subscription details
-- **PDF Storage**: Upload/download a PDF per norme (stored on disk, path in DB)
-- **Advanced Relationships**: Links to 9 lookup tables (statut, documentType, collection, industrialBranch, productFamily, subFamily, filter1, icsLevel1/2/3)
-- **Search & Filter**: By reference, status, ICS hierarchy levels, with pagination
-- **Timestamps**: Automatic createdAt/updatedAt tracking
+- `POST /api/auth/register` — Inscription
+- `POST /api/auth/login` — Connexion, retourne `accessToken` + `refreshToken`
+- `POST /api/auth/refresh` — Renouvellement du token
+- `GET /api/auth/me` — Profil de l'utilisateur connecté
+- Tokens signés HS256, access token 15 min, refresh token 14 jours
+- BCrypt pour les mots de passe
 
-### User Management System
-- **Admin-only Operations**: User CRUD at `/api/users`
-- **User CRUD**: Create, list, retrieve by ID, update, delete users
-- **Role Management**: Assign ROLE_ADMIN or ROLE_USER with normalization
-- **Password Management**: Optional password update (empty = no change)
-- **Duplicate Prevention**: Validates unique usernames
-- **List Management**: Paginated user list with optional filtering by username/role
+### Gestion des normes (publique + admin)
 
-### ICS Hierarchy (International Classification for Standards)
-- **3-Level Hierarchy**: Level1 → Level2 → Level3
-- **Auto-Code Prefixing**:
-  - Level1: Base code (e.g., `77`)
-  - Level2: Auto-prefixed (e.g., `01` becomes `77.01`)
-  - Level3: Auto-prefixed (e.g., `401` becomes `77.01.401`)
-- **Lazy Loading Optimization**: Uses `@EntityGraph` for eager loading to prevent "no session" errors
-- **Hierarchical Filtering**: Filter normes by any ICS level
+| Endpoint | Accès | Description |
+|---|---|---|
+| `GET /api/normes` | Public | Liste paginée avec filtres |
+| `GET /api/normes/{id}` | Public | Détail d'une norme |
+| `POST /api/normes` | ADMIN | Créer une norme |
+| `PUT /api/normes/{id}` | ADMIN | Modifier une norme |
+| `DELETE /api/normes/{id}` | ADMIN | Supprimer une norme |
+| `POST /api/normes/{id}/pdf` | ADMIN | Uploader un PDF |
+| `GET /api/normes/{id}/pdf` | USER/ADMIN | Télécharger le PDF (contrôle abonnement) |
+| `POST /api/normes/import/excel` | ADMIN | Import en masse depuis .xlsx |
 
-### Lookup Tables
-- **STATUT**: Status/publication state (PUBLISHED, DRAFT, etc.)
-- **DOCUMENT_TYPE**: Type classification (STANDARD, TECHNICAL_REPORT, etc.)
-- **COLLECTION**: Collection grouping (ISO, IEC, EN, etc.)
-- **INDUSTRIAL_BRANCH**: Industry categorization (MANUFACTURING, IT, etc.)
-- **PRODUCT_FAMILY**: Product family classification
-- **SUB_FAMILY**: Sub-family details
-- **FILTER**: Additional filter category
-- **All with CRUD**: Full create, read, update, delete via `/api/lookups/{type}`
+**Filtres disponibles :** `?search=iso&reference=ISO-001&statutId=1&icsLevel1Id=1&icsLevel2Id=12&icsLevel3Id=123`
 
-### Data Quality & Validation
-- **Bean Validation**: Jakarta Validation annotations (@NotBlank, @Size, @Email, etc.)
-- **Global Exception Handling**: Standardized error responses with proper HTTP status codes
-- **Field Constraints**: Min/max lengths, required fields, format validation
-- **Business Rules**: Duplicate username prevention, role validation, password strength (optional)
+### Import Excel des normes
+
+Endpoint : `POST /api/normes/import/excel` (multipart/form-data)
+
+Paramètres :
+- `file` : fichier `.xlsx` obligatoire
+- `onDuplicate` : `SKIP` (défaut) ou `UPDATE`
+
+Colonnes du fichier Excel (en-tête non sensible à la casse) :
+
+| Colonne | Obligatoire | Format |
+|---|---|---|
+| reference | Oui | texte |
+| publicationDate | Non | yyyy-MM-dd |
+| titreFr / titreEn / titreDe | Non | texte |
+| descripteurFr / descripteurEn | Non | texte |
+| documentIdentifier | Non | texte |
+| includedInSubscription | Non | true/false/oui/non/1/0 |
+| mandatory | Non | true/false/oui/non/1/0 |
+| afnorIndex / printNumber / printDate | Non | texte / yyyy-MM-dd |
+| regulationSpecifique | Non | texte |
+| statutCode / documentTypeCode / collectionCode | Non | code entité référence |
+| industrialBranchCode / productFamilyCode / subFamilyCode | Non | code entité référence |
+| filter1Code / icsLevel1Code / icsLevel2Code / icsLevel3Code | Non | code entité référence |
+
+Réponse :
+```json
+{
+  "totalRows": 10,
+  "created": 7,
+  "updated": 1,
+  "skipped": 1,
+  "errors": 1,
+  "rowErrors": [
+    { "row": 5, "reference": "ISO-1234", "message": "Code introuvable: 'X99'" }
+  ]
+}
+```
+
+### Gestion des abonnements SaaS
+
+#### Plans d'abonnement
+
+| Endpoint | Accès | Description |
+|---|---|---|
+| `GET /api/admin/plans` | Public | Lister tous les plans |
+| `POST /api/admin/plans` | ADMIN | Créer un plan |
+| `PUT /api/admin/plans/{id}` | ADMIN | Modifier un plan |
+| `DELETE /api/admin/plans/{id}` | ADMIN | Supprimer un plan |
+
+Champs d'un plan :
+- `nom` (unique), `description`, `prix`, `dureeMois`
+- `illimite` (boolean) — si `true`, `nombreConsultations` doit être `null`
+- `nombreConsultations` — obligatoire si `illimite = false`
+
+#### Abonnements
+
+| Endpoint | Accès | Description |
+|---|---|---|
+| `GET /api/admin/abonnements` | ADMIN | Tous les abonnements |
+| `POST /api/admin/abonnements` | ADMIN | Créer un abonnement |
+| `PUT /api/admin/abonnements/{id}` | ADMIN | Modifier un abonnement |
+| `DELETE /api/admin/abonnements/{id}` | ADMIN | Annuler un abonnement |
+| `GET /api/abonnements/me` | USER | Abonnement actif de l'utilisateur connecté |
+| `GET /api/abonnements/me/consultations` | USER | Historique de consultations |
+
+Statuts d'un abonnement : `PENDING` → `ACTIVE` → `EXPIRED` / `CANCELLED`
+
+#### Paiements
+
+| Endpoint | Accès | Description |
+|---|---|---|
+| `GET /api/admin/paiements` | ADMIN | Tous les paiements |
+| `POST /api/admin/paiements` | ADMIN | Enregistrer un paiement |
+| `GET /api/admin/paiements/abonnement/{id}` | ADMIN | Paiements d'un abonnement |
+
+Règle automatique : un paiement avec `statutPaiement = COMPLETE` sur un abonnement `PENDING` le passe automatiquement à `ACTIVE`.
+
+Méthodes de paiement : `CARTE_BANCAIRE`, `VIREMENT`, `CHEQUE`, `ESPECES`, `PAYPAL`
+
+Statuts de paiement : `EN_ATTENTE`, `COMPLETE`, `ECHOUE`, `REMBOURSE`
+
+### Contrôle d'accès aux PDF (AbonnementGuard)
+
+Le composant `AbonnementGuard` intercepte chaque téléchargement de PDF :
+
+1. Si l'utilisateur est ADMIN → accès direct sans vérification
+2. Si la norme n'est pas `includedInSubscription` → accès libre
+3. Sinon :
+   - Vérifie qu'un abonnement `ACTIVE` existe avec `dateFin >= aujourd'hui`
+   - Si plan non illimité : vérifie `consultationsRestantes > 0`, décrémente et sauvegarde
+   - Enregistre la consultation dans la table `consultations`
+   - Lance `SubscriptionRequiredException` (403) ou `ConsultationLimitExceededException` (403)
+
+### Tables de référence (Lookups)
+
+| Endpoint | Accès | Types disponibles |
+|---|---|---|
+| `GET /api/lookups/{type}` | Public | STATUT, DOCUMENT_TYPE, COLLECTION, INDUSTRIAL_BRANCH, PRODUCT_FAMILY, SUB_FAMILY, FILTER, ICS_LEVEL1, ICS_LEVEL2, ICS_LEVEL3 |
+| `POST/PUT/DELETE /api/lookups/{type}` | ADMIN | Gestion CRUD |
+
+### Gestion des utilisateurs (Admin)
+
+| Endpoint | Accès | Description |
+|---|---|---|
+| `GET /api/users` | ADMIN | Liste paginée avec filtres username/role |
+| `GET /api/users/{id}` | ADMIN | Détail utilisateur |
+| `POST /api/users` | ADMIN | Créer utilisateur |
+| `PUT /api/users/{id}` | ADMIN | Modifier utilisateur (mot de passe vide = inchangé) |
+| `DELETE /api/users/{id}` | ADMIN | Supprimer utilisateur |
 
 ---
 
-## 🗄️ Database Schema
+## Base de données
 
-### Core Tables
-- **user**: User accounts with encrypted passwords and roles
-- **norme**: Standards catalog with multi-language support
-- **statut**: Publication status lookup
-- **document_type**: Document type lookup
-- **collection**: Collection lookup (ISO, IEC, EN)
-- **industrial_branch**: Industry branch lookup
-- **product_family**: Product family lookup
-- **sub_family**: Sub-family lookup
-- **filter**: Additional filter lookup
-- **ics_level1**, **ics_level2**, **ics_level3**: ICS hierarchy lookups
+### Migrations Flyway
 
-### Flyway Migrations
-- **V1__initial_schema.sql**: User and core schema
-- **V2__add_categories_and_standards.sql**: Standard lookups and norme table
-- **V3__create_normes_and_lookup_tables.sql**: ICS hierarchy tables
+| Fichier | Contenu |
+|---|---|
+| V1__initial_schema.sql | Table `users` |
+| V2__add_categories_and_standards.sql | Tables initiales (no-op sur DB fraîche) |
+| V3__create_normes_and_lookup_tables.sql | Table `normes` + 10 tables lookup ICS |
+| V4__add_norme_pdf_fields.sql | Colonnes PDF sur `normes` |
+| V5__create_subscription_tables.sql | `plans_abonnement`, `abonnements`, `paiements`, `consultations` |
+| V6__drop_orphan_tables.sql | Suppression tables orphelines `standards` et `categories` |
+
+### Tables actives
+
+- `users` — comptes utilisateurs
+- `normes` — catalogue des normes avec métadonnées multilingues + PDF
+- `statut`, `document_type`, `collection`, `industrial_branch`, `product_family`, `sub_family`, `filter1` — tables de référence
+- `ics_level1`, `ics_level2`, `ics_level3` — hiérarchie ICS 3 niveaux
+- `plans_abonnement` — plans tarifaires
+- `abonnements` — abonnements utilisateurs
+- `paiements` — historique des paiements
+- `consultations` — historique des téléchargements PDF
 
 ---
 
-## 🚀 Getting Started
+## Tests
 
-### Prerequisites
-- Java 17 or higher
-- PostgreSQL 12 or higher
-- Maven 3.8 or higher
+### Vue d'ensemble
 
-### Setup & Installation
+| # | Type | Technologie | Portée | Nb tests |
+|---|---|---|---|---|
+| 1 | Tests unitaires | JUnit 5 + Mockito | Services, entités, sécurité | 69 |
+| 2 | Tests contrôleurs | MockMvc + `@WebMvcTest` | Couche HTTP, codes de retour, JSON | 49 |
+| 3 | Tests migration | Testcontainers + PostgreSQL 15 | Migrations Flyway, schéma réel | 11 |
+| 4 | Analyse qualité | SonarQube 9.9 | Bugs, vulnérabilités, code smells, couverture | — |
+| | **Total** | | | **129** |
 
-1. **Clone repository**
-   ```powershell
-   git clone <repository-url>
-   cd portail-web-backend
-   ```
+---
 
-2. **Configure database** (edit `src/main/resources/application.properties`)
-   ```properties
-   spring.datasource.url=jdbc:postgresql://localhost:5432/gestion_normes
-   spring.datasource.username=postgres
-   spring.datasource.password=your_password
-   ```
+### 1. Tests unitaires — JUnit 5 + Mockito
 
-3. **Run the application**
-   ```powershell
-   mvn clean spring-boot:run
-   ```
+**Package :** `junit_test/`  
+**Technologie :** JUnit 5 (`@ExtendWith(MockitoExtension.class)`), Mockito pour les dépendances simulées.  
+**Portée :** logique métier pure, sans démarrage du contexte Spring.
 
-4. **Access Swagger UI**
-   ```
-   http://localhost:8080/swagger-ui.html
-   ```
+```
+junit_test/
+├── AbonnementIsActifTest.java        (6 tests)  — isActif() : ACTIVE + dateFin >= today
+├── JwtServiceTest.java               (7 tests)  — génération, validation, expiration, extraction JWT
+├── AbonnementGuardTest.java          (9 tests)  — accès PDF : admin, norme libre, quota, abonnement actif
+├── PlanAbonnementServiceTest.java   (10 tests)  — CRUD plans, règle illimité/nombreConsultations
+├── AbonnementServiceTest.java        (8 tests)  — création, statut, calcul dateFin
+├── PaiementServiceTest.java          (7 tests)  — paiement COMPLETE → abonnement ACTIVE
+├── NormeServiceTest.java             (9 tests)  — CRUD norme, unicité référence, nettoyage PDF
+└── NormeExcelImportServiceTest.java (12 tests)  — parsing xlsx, doublons, erreurs par ligne
+```
+
+**Caractéristiques :**
+- Aucune base de données requise — toutes les dépendances sont mockées (`@Mock`, `@InjectMocks`)
+- Cas nominaux + cas d'erreur couverts (exceptions métier, valeurs limites)
+- Exécution rapide (< 5 secondes)
+
+---
+
+### 2. Tests contrôleurs — MockMvc + `@WebMvcTest`
+
+**Package :** `mockmvc_test/`  
+**Technologie :** `@WebMvcTest` (contexte Spring MVC partiel), `MockMvc` pour simuler les requêtes HTTP, `@MockitoBean` pour les services.  
+**Portée :** couche HTTP uniquement — routing, codes de retour, sérialisation JSON, sécurité Spring.
+
+```
+mockmvc_test/
+├── AuthControllerMvcTest.java           (6 tests)
+│   ├── register : username disponible → 201 / username pris → 400
+│   ├── login : identifiants valides → 200 + tokens / invalides → 401
+│   └── GET /me : sans auth → 401 / avec auth → 200 + profil
+│
+├── NormeControllerMvcTest.java         (13 tests)
+│   ├── GET liste paginée → 200, GET par id → 200 / 404
+│   ├── POST créer → 201, référence vide → 400, référence absente → 400
+│   ├── PUT modifier → 200 / 404, DELETE → 204
+│   ├── GET PDF → 200 / 402 (sans abonnement)
+│   └── POST import Excel → 200 + rapport
+│
+├── PlanAbonnementControllerMvcTest.java (11 tests)
+│   ├── GET liste → 200, GET par id → 200 / 404
+│   ├── POST créer → 201, nom vide → 400, illimite + consultations → 400
+│   ├── PUT modifier → 200 / 404
+│   └── DELETE → 204 / 404
+│
+├── AbonnementControllerMvcTest.java    (10 tests)
+│   ├── GET liste admin → 200, GET par id → 200 / 404
+│   ├── POST créer → 201, champ obligatoire manquant → 400
+│   ├── PUT modifier → 200, DELETE → 204
+│   └── GET /me → 200 (actif) / 204 (aucun), GET /me/consultations → 200
+│
+└── PaiementControllerMvcTest.java       (9 tests)
+    ├── GET liste → 200, liste vide → 200
+    ├── GET par id → 200 / 404
+    ├── GET par abonnement → 200 / 200 vide
+    └── POST enregistrer → 201 / 400 (montant nul) / 404 (abonnement inexistant)
+```
+
+**Caractéristiques :**
+- Contexte Spring MVC partiel : pas de base de données, pas de Flyway
+- Les services sont mockés — tests ciblés sur la couche contrôleur
+- Vérifie les codes HTTP, la structure JSON, et les règles de sécurité (`@PreAuthorize`)
+
+---
+
+### 3. Tests migration Flyway — Testcontainers + PostgreSQL
+
+**Package :** `testcontainers_test/`  
+**Technologie :** `docker-java` avec API 1.47, PostgreSQL 15 dans un conteneur Docker isolé, `@SpringBootTest` complet avec `@DynamicPropertySource`.  
+**Portée :** validation des 6 migrations Flyway sur une vraie base PostgreSQL vierge.
+
+```
+testcontainers_test/
+└── FlywayMigrationTest.java (11 tests)
+    ├── allSixMigrationsShouldBeAppliedWithSuccess   — 6 migrations SUCCESS
+    ├── migrationVersionsShouldFollowSequence        — ordre V1→V6
+    ├── v1_usersTableShouldExistWithRequiredColumns  — colonnes users
+    ├── v3_normesAndAllLookupTablesShouldExist       — 11 tables (normes + lookups)
+    ├── v3_normeIndexesShouldExist                  — 5 index (reference, statut, ics1/2/3)
+    ├── v4_pdfColumnsShouldBeAddedToNormes          — 4 colonnes PDF
+    ├── v5_subscriptionTablesShouldExist             — 4 tables abonnement
+    ├── v5_subscriptionIndexesShouldExist            — 7 index abonnements/paiements/consultations
+    ├── v6_standardsAndCategoriesTablesShouldBeDropped — tables supprimées après V6
+    ├── fkConstraint_abonnementShouldReferencePlanAndUser — FK abonnements → users/plans
+    └── fkConstraint_consultationShouldReferenceNormeAndUser — FK consultations → normes/users
+```
+
+**Caractéristiques :**
+- Un conteneur PostgreSQL 15 est créé automatiquement via docker-java avant le démarrage du contexte Spring
+- Flyway migrate depuis un schéma vide — aucune donnée résiduelle possible
+- Le conteneur est détruit à la fin de la JVM (shutdown hook)
+- **Prérequis :** Docker Desktop doit être démarré avec le port TCP 2375 activé (`Settings → General → Expose daemon on tcp://localhost:2375 without TLS`)
+
+---
+
+### 4. Analyse qualité — SonarQube
+
+**Technologie :** SonarQube 9.9 LTS Community Edition, via `sonar-maven-plugin 4.0.0`.  
+**Portée :** analyse statique du code source + import de la couverture JaCoCo.
+
+#### Ce que SonarQube mesure
+
+| Catégorie | Description |
+|---|---|
+| **Bugs** | Erreurs potentielles à l'exécution (null pointer, mauvaise comparaison…) |
+| **Vulnérabilités** | Failles de sécurité (injection, exposition de données…) |
+| **Code Smells** | Mauvaises pratiques, code difficile à maintenir |
+| **Couverture** | % de lignes couvertes par les tests (importé depuis JaCoCo) |
+| **Duplications** | Blocs de code dupliqués (CPD) |
+| **Quality Gate** | Seuil global : passe si 0 bug, 0 vuln, couverture ≥ 80 % |
+
+#### Prérequis — Démarrer SonarQube avec Docker
+
+```powershell
+docker run -d `
+  --name sonarqube `
+  -p 9000:9000 `
+  -e SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true `
+  sonarqube:lts-community
+```
+
+Attendre ~90 secondes, puis ouvrir **http://localhost:9000**  
+Identifiants par défaut : `admin` / `admin`
+
+#### Créer le projet et générer un token
+
+1. **My Projects → Create project → Manually**
+2. Project key : `portail-web-backend`
+3. **Locally → Generate a token** (copier le token affiché)
+
+#### Lancer l'analyse
+
+```powershell
+# Analyse complète (tests + sonar)
+mvn clean verify sonar:sonar "-Dsonar.login=<TOKEN>"
+
+# Sonar seul (si les tests ont déjà tourné)
+mvn sonar:sonar "-Dsonar.login=<TOKEN>"
+```
+
+> **Sécurité :** ne jamais mettre le token dans `pom.xml`. Toujours le passer en argument `-Dsonar.login=...`.
+
+#### Tableau de bord
+
+```
+http://localhost:9000/dashboard?id=portail-web-backend
+```
+
+#### Gérer le conteneur SonarQube
+
+```powershell
+docker stop sonarqube    # Arrêter
+docker start sonarqube   # Relancer (conserve les données)
+```
+
+#### Configuration pom.xml (déjà en place)
+
+Les propriétés suivantes sont préconfigurées dans `pom.xml` :
+
+```xml
+<sonar.projectKey>portail-web-backend</sonar.projectKey>
+<sonar.projectName>Portail Web Backend</sonar.projectName>
+<sonar.host.url>http://localhost:9000</sonar.host.url>
+<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+<sonar.exclusions>**/dto/**,**/entity/**,**/config/**,**/exception/**,**/common/**,**/*Application.java</sonar.exclusions>
+```
+
+---
+
+### Lancer les tests
+
+```bash
+# Tous les tests
+mvn test
+
+# Un type spécifique
+mvn test -Dtest="*JwtServiceTest,*AbonnementGuardTest"   # JUnit
+mvn test -Dtest="*MvcTest"                               # MockMvc
+mvn test -Dtest=FlywayMigrationTest                      # Testcontainers
+
+# Tests + analyse SonarQube en une commande
+mvn clean verify sonar:sonar "-Dsonar.login=<TOKEN>"
+```
+
+### Rapport de couverture JaCoCo
+
+Généré automatiquement après `mvn test` :
+
+```
+target/site/jacoco/index.html   ← rapport HTML
+target/site/jacoco/jacoco.xml   ← XML importé par SonarQube
+```
+
+Le rapport affiche par classe et par package :
+- % de lignes couvertes
+- % de branches couvertes
+- % de méthodes couvertes
+
+### Rapport Surefire détaillé
+
+```bash
+mvn surefire-report:report
+```
+
+Rapport HTML disponible dans :
+```
+target/site/surefire-report.html
+```
+
+---
+
+## Démarrage
+
+### Prérequis
+
+- Java 17+
+- PostgreSQL 12+
+- Maven 3.8+
+
+### Configuration (`src/main/resources/application.properties`)
+
+```properties
+# Base de données
+spring.datasource.url=jdbc:postgresql://localhost:5432/portail_web_db
+spring.datasource.username=postgres
+spring.datasource.password=your_password
+spring.jpa.hibernate.ddl-auto=validate
+
+# JWT
+jwt.secret=your-secret-key-minimum-32-characters-long
+jwt.access-token-expiration-ms=900000
+jwt.refresh-token-expiration-ms=1209600000
+
+# Stockage PDF des normes
+app.storage.norme-pdf-dir=storage/normes
+
+# CORS (origines autorisées du frontend)
+app.cors.allowed-origins=http://localhost:3000,http://localhost:5173
+
+# Admin auto-créé au démarrage (désactiver en production)
+app.admin.seed.enabled=true
+app.admin.username=admin
+app.admin.password=admin123
+```
+
+### Lancement
+
+```bash
+mvn clean spring-boot:run
+```
+
+Swagger UI disponible sur :
+```
+http://localhost:8080/swagger-ui.html
+```
 
 ### Build JAR
-```powershell
+
+```bash
 mvn clean package
 java -jar target/portail-web-backend-0.0.1-SNAPSHOT.jar
 ```
 
 ---
 
-## 📡 API Endpoints
+## Exemples d'utilisation
 
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login and get JWT tokens
-- `POST /api/auth/refresh` - Refresh access token
+### Connexion et utilisation du token
 
-### Standards (Normes)
-- `GET /api/normes?page=0&size=20` - List standards with pagination
-- `GET /api/normes/{id}` - Get standard by ID
-- `POST /api/normes` - Create new standard (ADMIN only)
-- `PUT /api/normes/{id}` - Update standard (ADMIN only)
-- `DELETE /api/normes/{id}` - Delete standard (ADMIN only)
-- `POST /api/normes/{id}/pdf` - Upload norme PDF (ADMIN only, multipart `file`)
-- `GET /api/normes/{id}/pdf` - Download norme PDF (ADMIN/USER)
-- **Filters**: `?reference=ISO&statutId=1&icsLevel1Id=1&icsLevel2Id=12&icsLevel3Id=123`
-
-### Lookup Tables
-- `GET /api/lookups/{type}?page=0&size=20` - List lookups (STATUT, DOCUMENT_TYPE, COLLECTION, etc.)
-- `GET /api/lookups/{type}/{id}` - Get single lookup
-- `POST /api/lookups/{type}` - Create lookup (ADMIN only)
-- `PUT /api/lookups/{type}/{id}` - Update lookup (ADMIN only)
-- `DELETE /api/lookups/{type}/{id}` - Delete lookup (ADMIN only)
-
-### User Management (Admin Only)
-- `GET /api/users?page=0&size=20` - List all users
-- `GET /api/users/{id}` - Get user by ID
-- `POST /api/users` - Create new user
-- `PUT /api/users/{id}` - Update user
-- `DELETE /api/users/{id}` - Delete user
-- **Filters**: `?username=john&role=ROLE_USER`
-
----
-
-## 📋 Configuration
-
-### Application Properties (`application.properties`)
-
-```properties
-# Server
-server.port=8080
-server.servlet.context-path=/
-
-# Database
-spring.datasource.url=jdbc:postgresql://localhost:5432/gestion_normes
-spring.datasource.username=postgres
-spring.datasource.password=password
-spring.jpa.hibernate.ddl-auto=validate
-spring.jpa.show-sql=false
-
-# Flyway (Database Migrations)
-spring.flyway.enabled=true
-spring.flyway.locations=classpath:db/migration
-
-# JWT Configuration
-app.jwt.secret=your-secret-key-min-256-bits
-app.jwt.access-token-expiry=900000  # 15 minutes
-app.jwt.refresh-token-expiry=1209600000  # 14 days
-
-# Admin User Seeding (disable in production)
-app.admin.seed.enabled=false
-app.admin.username=admin
-app.admin.password=admin@123
-
-# PDF storage (normes)
-app.storage.norme-pdf-dir=storage/normes
-
-# CORS
-app.cors.allowed-origins=http://localhost:3000,http://localhost:5173
-```
-
----
-
-## 🔐 Authentication Flow
-
-### 1. Register New User
 ```bash
-POST /api/auth/register
-Content-Type: application/json
-
-{
-  "username": "john_doe",
-  "password": "securePassword@123"
-}
-```
-
-### 2. Login to Get Tokens
-```bash
+# Connexion
 POST /api/auth/login
-Content-Type: application/json
+{ "username": "admin", "password": "admin123" }
 
-{
-  "username": "john_doe",
-  "password": "securePassword@123"
-}
-```
-
-**Response:**
-```json
-{
-  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresIn": 900000
-}
-```
-
-### 3. Use Access Token in Headers
-```bash
-GET /api/normes
+# Utiliser le token dans les requêtes suivantes
 Authorization: Bearer {accessToken}
 ```
 
-### 4. Refresh Token When Expired
-```bash
-POST /api/auth/refresh
-Content-Type: application/json
+### Créer un plan et un abonnement
 
+```bash
+# 1. Créer un plan
+POST /api/admin/plans
 {
-  "refreshToken": "{refreshToken}"
+  "nom": "Plan Standard",
+  "description": "50 consultations / an",
+  "prix": 99.99,
+  "dureeMois": 12,
+  "nombreConsultations": 50,
+  "illimite": false
+}
+
+# 2. Créer un abonnement pour un user
+POST /api/admin/abonnements
+{ "userId": 5, "planId": 1, "dateDebut": "2026-01-01" }
+
+# 3. Enregistrer le paiement → active automatiquement l'abonnement
+POST /api/admin/paiements
+{
+  "abonnementId": 1,
+  "montant": 99.99,
+  "methodePaiement": "CARTE_BANCAIRE",
+  "referenceTransaction": "TXN-2026-001",
+  "statutPaiement": "COMPLETE"
 }
 ```
 
----
+### Import Excel de normes
 
-## 👥 User Management Examples
-
-### Create User (Admin Only)
 ```bash
-POST /api/users
+POST /api/normes/import/excel
 Authorization: Bearer {adminToken}
-Content-Type: application/json
+Content-Type: multipart/form-data
 
-{
-  "username": "new_user",
-  "password": "password@123",
-  "role": "ROLE_USER"
-}
-```
-
-### List Users with Pagination
-```bash
-GET /api/users?page=0&size=10&username=john
-Authorization: Bearer {adminToken}
-```
-
-### Update User (Admin Only)
-```bash
-PUT /api/users/1
-Authorization: Bearer {adminToken}
-Content-Type: application/json
-
-{
-  "username": "updated_user",
-  "password": "",  # Empty password = don't change
-  "role": "ROLE_ADMIN"
-}
-```
-
-### Delete User (Admin Only)
-```bash
-DELETE /api/users/1
-Authorization: Bearer {adminToken}
+file=normes.xlsx
+onDuplicate=SKIP
 ```
 
 ---
 
-## 📌 Standard (Norme) Examples
+## Sécurité
 
-### Create Standard (Admin Only)
-```bash
-POST /api/normes
-Authorization: Bearer {adminToken}
-Content-Type: application/json
+### Règles d'accès
 
-{
-  "reference": "ISO-9001:2015",
-  "publicationDate": "2015-09-23",
-  "titreFr": "Systèmes de management de la qualité",
-  "titreEn": "Quality management systems",
-  "documentIdentifier": "DOC-ISO-9001",
-  "includedInSubscription": true,
-  "mandatory": false,
-  "statutId": 1,
-  "documentTypeId": 2,
-  "collectionId": 1,
-  "industrialBranchId": 3,
-  "productFamilyId": 7,
-  "subFamilyId": 11,
-  "icsLevel1Id": 1,
-  "icsLevel2Id": 12,
-  "icsLevel3Id": 123
-}
-```
+| Route | Règle |
+|---|---|
+| `GET /api/normes`, `GET /api/normes/{id}` | Public |
+| `GET /api/lookups/**` | Public |
+| `GET /api/admin/plans` | Public |
+| `GET /api/normes/{id}/pdf` | USER ou ADMIN + abonnement actif |
+| `POST/PUT/DELETE /api/normes/**` | ADMIN uniquement |
+| `POST /api/normes/import/excel` | ADMIN uniquement |
+| `POST/PUT/DELETE /api/admin/plans` | ADMIN uniquement |
+| `GET/POST/PUT/DELETE /api/admin/abonnements` | ADMIN uniquement |
+| `GET/POST /api/admin/paiements` | ADMIN uniquement |
+| `GET /api/abonnements/me` | USER connecté |
 
-### List Standards with Filters
-```bash
-GET /api/normes?page=0&size=20&reference=ISO&statutId=1&icsLevel1Id=1&icsLevel2Id=12
-Authorization: Bearer {token}
-```
+### Exceptions métier
 
-### Get Standard by ID
-```bash
-GET /api/normes/42
-Authorization: Bearer {token}
-```
-
-**Example Response:**
-```json
-{
-  "id": 42,
-  "reference": "ISO-9001:2015",
-  "publicationDate": "2015-09-23",
-  "titreFr": "Systèmes de management de la qualité",
-  "titreEn": "Quality management systems",
-  "titreDe": "Qualitatsmanagementsysteme",
-  "descripteurFr": "Management de la qualite",
-  "descripteurEn": "Quality management",
-  "documentIdentifier": "DOC-ISO-9001",
-  "includedInSubscription": true,
-  "afnorIndex": "X50-131",
-  "printNumber": "3",
-  "printDate": "2024-01-10",
-  "mandatory": false,
-  "statutId": 1,
-  "statutCode": "PUBLISHED",
-  "documentTypeId": 2,
-  "documentTypeCode": "STANDARD",
-  "collectionId": 1,
-  "collectionCode": "ISO",
-  "industrialBranchId": 3,
-  "industrialBranchCode": "MANUFACTURING",
-  "productFamilyId": 7,
-  "productFamilyCode": "QUALITY",
-  "subFamilyId": 11,
-  "subFamilyCode": "QMS",
-  "icsLevel1Id": 1,
-  "icsLevel1Code": "01",
-  "icsLevel2Id": 12,
-  "icsLevel2Code": "01.040",
-  "icsLevel3Id": 123,
-  "icsLevel3Code": "01.040.03",
-  "createdAt": "2026-05-14T10:00:00",
-  "updatedAt": "2026-05-14T10:00:00"
-}
-```
+| Exception | Code HTTP | Cause |
+|---|---|---|
+| `SubscriptionRequiredException` | 403 | PDF protégé sans abonnement actif |
+| `ConsultationLimitExceededException` | 403 | Quota de consultations épuisé |
+| `ResourceNotFoundException` | 404 | Entité introuvable |
+| `BadRequestException` | 400 | Données invalides |
 
 ---
 
-## 🏷️ Lookup Table Examples
+## Dépendances clés
 
-### List All Statuses
-```bash
-GET /api/lookups/STATUT?page=0&size=50
-Authorization: Bearer {token}
-```
-
-### Available Lookup Types
-- `STATUT` - Publication status
-- `DOCUMENT_TYPE` - Document type
-- `COLLECTION` - Collection (ISO, IEC, EN)
-- `INDUSTRIAL_BRANCH` - Industry branch
-- `PRODUCT_FAMILY` - Product family
-- `SUB_FAMILY` - Sub-family
-- `FILTER` - Additional filter
-
-### Create Lookup Item (Admin Only)
-```bash
-POST /api/lookups/STATUT
-Authorization: Bearer {adminToken}
-Content-Type: application/json
-
-{
-  "code": "PUBLISHED",
-  "label": "Published"
-}
-```
+| Dépendance | Version | Rôle |
+|---|---|---|
+| spring-boot-starter-web | 4.0.5 | API REST |
+| spring-boot-starter-data-jpa | 4.0.5 | ORM JPA/Hibernate |
+| spring-boot-starter-security | 4.0.5 | Sécurité |
+| spring-boot-starter-validation | 4.0.5 | Validation des DTOs |
+| jjwt-api / jjwt-impl / jjwt-jackson | 0.11.5 | Tokens JWT |
+| flyway-database-postgresql | géré par parent | Migrations SQL |
+| postgresql | géré par parent | Driver JDBC |
+| springdoc-openapi-starter-webmvc-ui | 3.0.2 | Swagger UI |
+| mapstruct | 1.5.5.Final | Mapping entité ↔ DTO |
+| lombok | géré par parent | Réduction boilerplate |
+| poi-ooxml | 5.3.0 | Lecture fichiers Excel |
+| jacoco-maven-plugin | 0.8.12 | Rapport de couverture tests |
 
 ---
 
-## 🧪 Testing
+## Problèmes courants
 
-### Run Tests
-```powershell
-mvn clean test
-```
+**"No session" / lazy loading**
+Ajouter `@EntityGraph` sur les méthodes du repository concernées.
 
-### Test Coverage
-- Authentication and token management
-- User CRUD operations
-- Standards CRUD operations
-- Lookup table management
-- Pagination and filtering
-- Role-based access control
-- Duplicate validation
-- Error handling
+**JWT expiré**
+Appeler `POST /api/auth/refresh` avec le `refreshToken` pour obtenir un nouveau `accessToken`.
 
----
+**403 sur téléchargement PDF**
+L'utilisateur n'a pas d'abonnement actif (`ACTIVE` + `dateFin >= aujourd'hui`) ou son quota de consultations est épuisé.
 
-## 🔧 Development
+**Erreur Flyway au démarrage**
+Vérifier que toutes les migrations V1→V6 sont présentes dans `src/main/resources/db/migration/`. Ne jamais modifier un fichier de migration existant.
 
-### IDE Setup
-- **IntelliJ IDEA**: Import as Maven project
-- **VS Code**: Install Java extensions
-
-### Code Style
-- Use Java 17+ features (records, text blocks where appropriate)
-- Follow Spring Boot best practices
-- Use DTOs for API contracts
-- Use @PreAuthorize for role-based access
-
-### Add New Feature
-1. Create entity in `entity/`
-2. Create repository in `repository/` with @EntityGraph if needed
-3. Create DTO in `dto/`
-4. Create service in `service/`
-5. Create controller in `controller/`
-6. Add Flyway migration in `src/main/resources/db/migration/`
-7. Write tests
-
----
-
-## 🐛 Common Issues
-
-### Issue: "Could not initialize proxy - no session"
-**Cause**: Lazy loading of relationships after session closed  
-**Solution**: Add `@EntityGraph` to repository methods for eager loading
-
-### Issue: "JWT token expired"
-**Solution**: Use the refresh token endpoint to get new access token
-
-### Issue: "Access denied" on API calls
-**Cause**: Missing or invalid JWT token, or insufficient role permissions  
-**Solution**: Ensure token is in `Authorization: Bearer {token}` header and user has required role
-
----
-
-## 📝 Database Migrations
-
-Managed by Flyway. New migrations should follow naming: `V{N}__{description}.sql`
-
-- **V1**: Initial schema with user table
-- **V2**: Lookup tables (statut, document_type, etc.)
-- **V3**: ICS hierarchy tables and norme table
-- **V4**: PDF fields for normes
-
----
-
-## 🎯 Frontend Integration
-
-This backend is designed to work with React/Vue frontend at endpoints:
-- Standards list and management: `/gestion/normes`
-- User management: `/gestion/utilisateurs` (Admin only)
-- Authentication: `/auth/login`, `/auth/register`
-
-Configure CORS in `application.properties`:
-```properties
-app.cors.allowed-origins=http://localhost:5173
-```
-
----
-
-## 📚 Dependencies
-
-- **Spring Boot**: Web, Data JPA, Security
-- **JWT**: java-jwt, jjwt
-- **Database**: PostgreSQL driver, Flyway
-- **Validation**: Jakarta Validation API
-- **Documentation**: Springdoc OpenAPI
-- **Mapper**: MapStruct (if used)
-- **Lombok** (optional): Reduce boilerplate
-
----
-
-## 📄 License
-
-This project is proprietary and confidential.
-
----
-
-## 👨‍💻 Team
-
-- Backend: Spring Boot/Java
-- Frontend: React/Vue.js
-- Database: PostgreSQL
+**Import Excel échoue avec erreur 400**
+- Le fichier doit être `.xlsx` (pas `.xls` ni `.csv`)
+- La colonne `reference` est obligatoire dans l'en-tête
+- Les codes de référence (statutCode, icsLevel1Code, etc.) doivent exister en base

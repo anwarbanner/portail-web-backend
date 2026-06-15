@@ -23,7 +23,7 @@ public class UserAdminService {
     }
 
     public Page<UserResponse> findAll(Pageable pageable, String username, String role) {
-        String normalizedRole = normalizeRoleFilter(role);
+        String normalizedRole = normalizeRole(role);
 
         Page<User> page;
         if (username != null && !username.isBlank() && normalizedRole != null) {
@@ -81,10 +81,6 @@ public class UserAdminService {
     }
 
     private String normalizeRole(String role) {
-        return role.startsWith("ROLE_") ? role : "ROLE_" + role;
-    }
-
-    private String normalizeRoleFilter(String role) {
         if (role == null || role.isBlank()) {
             return null;
         }

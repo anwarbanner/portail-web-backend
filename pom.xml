@@ -16,6 +16,14 @@
 	<properties>
 		<java.version>17</java.version>
 		<mapstruct.version>1.5.5.Final</mapstruct.version>
+		<testcontainers.version>1.21.0</testcontainers.version>
+		<!-- SonarQube -->
+		<sonar.projectKey>portail-web-backend</sonar.projectKey>
+		<sonar.projectName>Portail Web Backend</sonar.projectName>
+		<sonar.host.url>http://localhost:9000</sonar.host.url>
+		<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+		<sonar.exclusions>**/dto/**,**/entity/**,**/config/**,**/exception/**,**/common/**,**/*Application.java</sonar.exclusions>
+		<sonar.java.source>17</sonar.java.source>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -91,6 +99,28 @@
 		<artifactId>spring-boot-starter-test</artifactId>
 		<scope>test</scope>
 	</dependency>
+	<dependency>
+		<groupId>org.springframework.security</groupId>
+		<artifactId>spring-security-test</artifactId>
+		<scope>test</scope>
+	</dependency>
+	<dependency>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-testcontainers</artifactId>
+		<scope>test</scope>
+	</dependency>
+	<dependency>
+		<groupId>org.testcontainers</groupId>
+		<artifactId>junit-jupiter</artifactId>
+		<version>${testcontainers.version}</version>
+		<scope>test</scope>
+	</dependency>
+	<dependency>
+		<groupId>org.testcontainers</groupId>
+		<artifactId>postgresql</artifactId>
+		<version>${testcontainers.version}</version>
+		<scope>test</scope>
+	</dependency>
 	</dependencies>
 
 	<build>
@@ -162,6 +192,39 @@
 						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>0.8.12</version>
+				<executions>
+					<!-- Prépare l'agent JaCoCo avant les tests -->
+					<execution>
+						<id>prepare-agent</id>
+						<goals><goal>prepare-agent</goal></goals>
+					</execution>
+					<!-- Génère le rapport HTML après les tests -->
+					<execution>
+						<id>report</id>
+						<phase>test</phase>
+						<goals><goal>report</goal></goals>
+					</execution>
+				</executions>
+				<configuration>
+					<excludes>
+						<!-- Exclure les classes sans logique métier -->
+						<exclude>**/*Application.class</exclude>
+						<exclude>**/config/**</exclude>
+						<exclude>**/dto/**</exclude>
+						<exclude>**/entity/**</exclude>
+						<exclude>**/common/**</exclude>
+					</excludes>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.sonarsource.scanner.maven</groupId>
+				<artifactId>sonar-maven-plugin</artifactId>
+				<version>4.0.0.4121</version>
 			</plugin>
 		</plugins>
 	</build>
