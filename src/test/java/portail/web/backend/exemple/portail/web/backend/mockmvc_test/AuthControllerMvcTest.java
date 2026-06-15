@@ -12,14 +12,15 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import portail.web.backend.exemple.portail.web.backend.auth.AuthController;
+import portail.web.backend.exemple.portail.web.backend.exception.BadRequestException;
 import portail.web.backend.exemple.portail.web.backend.exception.GlobalExceptionHandler;
 import portail.web.backend.exemple.portail.web.backend.security.JwtService;
-import portail.web.backend.exemple.portail.web.backend.user.User;
-import portail.web.backend.exemple.portail.web.backend.user.UserRepository;
+import portail.web.backend.exemple.portail.web.backend.user.UserService;
+import portail.web.backend.exemple.portail.web.backend.user.dto.UserRequest;
+import portail.web.backend.exemple.portail.web.backend.user.dto.UserResponse;
 
 import java.util.List;
 
@@ -31,7 +32,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(MockitoExtension.class)
 class AuthControllerMvcTest {
 
-    @Mock UserRepository userRepository;
+    @Mock UserService userService;
     @Mock AuthenticationManager authenticationManager;
     @Mock JwtService jwtService;
     @Mock UserDetailsService userDetailsService;
@@ -41,8 +42,7 @@ class AuthControllerMvcTest {
     @BeforeEach
     void setup() {
         AuthController controller = new AuthController(
-                userRepository,
-                new BCryptPasswordEncoder(),
+                userService,
                 authenticationManager,
                 jwtService,
                 userDetailsService);
@@ -57,8 +57,8 @@ class AuthControllerMvcTest {
 
     @Test
     void register_usernameDisponible_retourne201() throws Exception {
-        when(userRepository.existsByUsername("alice")).thenReturn(false);
-        when(userRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        when(userService.create(any(UserRequest.class)))
+                .thenReturn(new UserResponse(1L, "alice", "ROLE_USER"));
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -67,12 +67,13 @@ class AuthControllerMvcTest {
                                 """))
                 .andExpect(status().isCreated());
 
-        verify(userRepository).save(any(User.class));
+        verify(userService).create(any(UserRequest.class));
     }
 
     @Test
     void register_usernamePris_retourne400() throws Exception {
-        when(userRepository.existsByUsername("alice")).thenReturn(true);
+        when(userService.create(any(UserRequest.class)))
+                .thenThrow(new BadRequestException("Username already exists"));
 
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -80,8 +81,6 @@ class AuthControllerMvcTest {
                                 {"username": "alice", "password": "secret123"}
                                 """))
                 .andExpect(status().isBadRequest());
-
-        verify(userRepository, never()).save(any());
     }
 
     // ── POST /api/auth/login ──────────────────────────────────────────────────

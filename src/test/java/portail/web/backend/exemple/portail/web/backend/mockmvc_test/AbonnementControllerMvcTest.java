@@ -27,8 +27,7 @@ import portail.web.backend.exemple.portail.web.backend.abonnement.service.Abonne
 import portail.web.backend.exemple.portail.web.backend.consultation.service.ConsultationService;
 import portail.web.backend.exemple.portail.web.backend.exception.GlobalExceptionHandler;
 import portail.web.backend.exemple.portail.web.backend.exception.ResourceNotFoundException;
-import portail.web.backend.exemple.portail.web.backend.user.User;
-import portail.web.backend.exemple.portail.web.backend.user.UserRepository;
+import portail.web.backend.exemple.portail.web.backend.user.UserService;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -46,7 +45,7 @@ class AbonnementControllerMvcTest {
 
     @Mock AbonnementService abonnementService;
     @Mock ConsultationService consultationService;
-    @Mock UserRepository userRepository;
+    @Mock UserService userService;
 
     @InjectMocks AbonnementController abonnementController;
 
@@ -85,13 +84,6 @@ class AbonnementControllerMvcTest {
                 1L, "Premium", "Description", new BigDecimal("99.00"),
                 12, null, LocalDate.now(), LocalDate.now().plusMonths(12),
                 "ACTIVE", null, true, true);
-    }
-
-    private User userStub(Long id, String username) {
-        User u = new User();
-        u.setId(id);
-        u.setUsername(username);
-        return u;
     }
 
     // En standalone MockMvc, Authentication étend Principal →
@@ -195,7 +187,7 @@ class AbonnementControllerMvcTest {
 
     @Test
     void monAbonnement_avecAbonnementActif_retourne200() throws Exception {
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(userStub(10L, "alice")));
+        when(userService.findIdByUsername("alice")).thenReturn(10L);
         when(abonnementService.findMonActif(10L)).thenReturn(Optional.of(monAbonnementResponse()));
 
         mockMvc.perform(get("/api/abonnements/me").with(withAuth("alice", "USER")))
@@ -206,7 +198,7 @@ class AbonnementControllerMvcTest {
 
     @Test
     void monAbonnement_sansAbonnementActif_retourne204() throws Exception {
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(userStub(10L, "alice")));
+        when(userService.findIdByUsername("alice")).thenReturn(10L);
         when(abonnementService.findMonActif(10L)).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/api/abonnements/me").with(withAuth("alice", "USER")))
@@ -217,7 +209,7 @@ class AbonnementControllerMvcTest {
 
     @Test
     void mesConsultations_retourne200AvecPage() throws Exception {
-        when(userRepository.findByUsername("alice")).thenReturn(Optional.of(userStub(10L, "alice")));
+        when(userService.findIdByUsername("alice")).thenReturn(10L);
         when(consultationService.findByUser(eq(10L), any()))
                 .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
 

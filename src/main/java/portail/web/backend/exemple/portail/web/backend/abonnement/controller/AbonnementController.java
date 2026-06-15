@@ -19,8 +19,7 @@ import portail.web.backend.exemple.portail.web.backend.abonnement.dto.MonAbonnem
 import portail.web.backend.exemple.portail.web.backend.abonnement.service.AbonnementService;
 import portail.web.backend.exemple.portail.web.backend.consultation.dto.ConsultationResponse;
 import portail.web.backend.exemple.portail.web.backend.consultation.service.ConsultationService;
-import portail.web.backend.exemple.portail.web.backend.exception.ResourceNotFoundException;
-import portail.web.backend.exemple.portail.web.backend.user.UserRepository;
+import portail.web.backend.exemple.portail.web.backend.user.UserService;
 
 @Tag(name = "Abonnements")
 @RestController
@@ -29,7 +28,7 @@ public class AbonnementController {
 
     private final AbonnementService abonnementService;
     private final ConsultationService consultationService;
-    private final UserRepository userRepository;
+    private final UserService userService;
 
     // ── Admin ─────────────────────────────────────────────────────────────────
 
@@ -92,8 +91,6 @@ public class AbonnementController {
     }
 
     private Long resolveUserId(Authentication authentication) {
-        return userRepository.findByUsername(authentication.getName())
-                .orElseThrow(() -> new ResourceNotFoundException("Utilisateur non trouvé"))
-                .getId();
+        return userService.findIdByUsername(authentication.getName());
     }
 }

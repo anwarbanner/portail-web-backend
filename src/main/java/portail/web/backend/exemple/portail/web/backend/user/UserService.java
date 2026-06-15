@@ -103,6 +103,12 @@ public class UserService {
         return new UserResponse(updatedUser.getId(), updatedUser.getUsername(), updatedUser.getRole());
     }
 
+    public Long findIdByUsername(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username))
+                .getId();
+    }
+
     /**
      * Delete user
      */

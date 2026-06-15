@@ -8,34 +8,31 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import portail.web.backend.exemple.portail.web.backend.auth.dto.AuthRequest;
 import portail.web.backend.exemple.portail.web.backend.auth.dto.AuthResponse;
 import portail.web.backend.exemple.portail.web.backend.auth.dto.RegisterRequest;
 import portail.web.backend.exemple.portail.web.backend.auth.dto.AuthMeResponse;
+import portail.web.backend.exemple.portail.web.backend.exception.BadRequestException;
 import portail.web.backend.exemple.portail.web.backend.security.JwtService;
-import portail.web.backend.exemple.portail.web.backend.user.User;
-import portail.web.backend.exemple.portail.web.backend.user.UserRepository;
+import portail.web.backend.exemple.portail.web.backend.user.UserService;
+import portail.web.backend.exemple.portail.web.backend.user.dto.UserRequest;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
+    private final UserService userService;
     private final AuthenticationManager authenticationManager;
     private final JwtService jwtService;
     private final UserDetailsService userDetailsService;
 
-    public AuthController(UserRepository userRepository,
-                          PasswordEncoder passwordEncoder,
+    public AuthController(UserService userService,
                           AuthenticationManager authenticationManager,
                           JwtService jwtService,
                           UserDetailsService userDetailsService) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
+        this.userService = userService;
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
@@ -43,17 +40,12 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterRequest request) {
-        if (userRepository.existsByUsername(request.getUsername())) {
-            return ResponseEntity.badRequest().body("Username already exists");
+        try {
+            userService.create(new UserRequest(request.getUsername(), request.getPassword(), "ROLE_USER"));
+            return ResponseEntity.status(201).build();
+        } catch (BadRequestException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
         }
-
-        User user = new User();
-        user.setUsername(request.getUsername());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setRole("ROLE_USER");
-        userRepository.save(user);
-
-        return ResponseEntity.status(201).build();
     }
 
     @PostMapping("/login")
