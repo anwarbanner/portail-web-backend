@@ -23,6 +23,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.doReturn;
 
 @ExtendWith(MockitoExtension.class)
 class JwtAuthenticationFilterTest {
@@ -117,8 +118,8 @@ class JwtAuthenticationFilterTest {
         when(userDetailsService.loadUserByUsername("alice")).thenReturn(userDetails);
         when(jwtService.isTokenValid("valid.token", userDetails)).thenReturn(true);
         when(jwtService.extractAuthorities("valid.token")).thenReturn(List.of());
-        when(userDetails.getAuthorities()).thenReturn(
-                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+        doReturn(List.of(new SimpleGrantedAuthority("ROLE_ADMIN")))
+                .when(userDetails).getAuthorities();
 
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.addHeader("Authorization", "Bearer valid.token");
