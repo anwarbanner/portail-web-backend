@@ -7,8 +7,8 @@ pipeline {
     }
 
     environment {
-        JMETER_HOME = 'C:\\jmeter'
-        JMETER_BIN  = "${JMETER_HOME}\\bin\\jmeter.bat"
+        JMETER_HOME = '/jmeter'
+        JMETER_BIN  = '/jmeter/bin/jmeter.sh'
         REPORT_DIR  = 'jmeter-report'
     }
 
@@ -16,13 +16,13 @@ pipeline {
 
         stage('Build') {
             steps {
-                bat 'mvn clean package -DskipTests'
+                sh 'mvn clean package -DskipTests'
             }
         }
 
         stage('Unit Tests') {
             steps {
-                bat 'mvn test -pl . -Dtest="**/junit_test/**"'
+                sh 'mvn test -Dtest="**/junit_test/**/*"'
             }
             post {
                 always {
@@ -33,7 +33,7 @@ pipeline {
 
         stage('MockMvc Tests') {
             steps {
-                bat 'mvn test -Dtest="**/mockmvc_test/**"'
+                sh 'mvn test -Dtest="**/mockmvc_test/**/*"'
             }
             post {
                 always {
@@ -44,7 +44,7 @@ pipeline {
 
         stage('Code Coverage') {
             steps {
-                bat 'mvn verify -DskipTests=false'
+                sh 'mvn verify -DskipTests=false'
             }
             post {
                 always {
@@ -59,10 +59,10 @@ pipeline {
 
         stage('Load Test - JMeter') {
             steps {
-                bat """
-                    if exist ${REPORT_DIR} rmdir /s /q ${REPORT_DIR}
-                    mkdir ${REPORT_DIR}
-                    ${JMETER_BIN} -n -t load-test.jmx -l ${REPORT_DIR}\\results.jtl -e -o ${REPORT_DIR}\\html
+                sh """
+                    rm -rf ${REPORT_DIR}
+                    mkdir -p ${REPORT_DIR}/html
+                    ${JMETER_BIN} -n -t load-test.jmx -l ${REPORT_DIR}/results.jtl -e -o ${REPORT_DIR}/html
                 """
             }
             post {
@@ -86,15 +86,10 @@ pipeline {
 
     post {
         failure {
-            mail to: 'laklatyanwar@gmail.com',
-                 subject: "Build échoué : ${env.JOB_NAME} #${env.BUILD_NUMBER}",
-                 body: """
-                     Le build ${env.JOB_NAME} #${env.BUILD_NUMBER} a échoué.
-                     Voir les détails : ${env.BUILD_URL}
-                 """
+            echo "Build echoue : ${env.JOB_NAME} #${env.BUILD_NUMBER} - ${env.BUILD_URL}"
         }
         success {
-            echo 'Build, Tests et Load Test réussis !'
+            echo 'Build, Tests et Load Test reussis !'
         }
     }
 }
