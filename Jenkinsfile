@@ -22,7 +22,7 @@ pipeline {
 
         stage('Unit Tests') {
             steps {
-                sh 'mvn test -Dexcludes="**/PortailWebBackendApplicationTests.java,**/FlywayMigrationTest.java,**/mockmvc_test/**"'
+                sh 'mvn test -P ci -Dtest="*Test" -Dexclude="**/mockmvc_test/**"'
             }
             post {
                 always {
@@ -33,7 +33,7 @@ pipeline {
 
         stage('MockMvc Tests') {
             steps {
-                sh 'mvn test -Dexcludes="**/PortailWebBackendApplicationTests.java,**/FlywayMigrationTest.java,**/junit_test/**"'
+                sh 'mvn test -P ci -Dtest="*MvcTest"'
             }
             post {
                 always {
@@ -44,7 +44,7 @@ pipeline {
 
         stage('Code Coverage') {
             steps {
-                sh 'mvn verify -Dexcludes="**/PortailWebBackendApplicationTests.java,**/FlywayMigrationTest.java"'
+                sh 'mvn verify -P ci'
             }
             post {
                 always {
