@@ -452,6 +452,179 @@ target/site/surefire-report.html
 
 ---
 
+## CI/CD — Jenkins + SonarQube + JMeter
+
+### Architecture du pipeline
+
+```
+GitHub Push
+    │
+    ▼
+┌─────────────────────────────────────────────────────┐
+│                  Jenkins Pipeline                    │
+│                                                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────────┐  │
+│  │  Build   │→ │  Tests   │→ │  Code Coverage   │  │
+│  │          │  │ 191 tests│  │  JaCoCo Report   │  │
+│  └──────────┘  └──────────┘  └──────────────────┘  │
+│                                        │             │
+│                              ┌─────────▼──────────┐ │
+│                              │  SonarQube Analysis│ │
+│                              │  Quality Gate ✅   │ │
+│                              └─────────┬──────────┘ │
+│                                        │             │
+│                              ┌─────────▼──────────┐ │
+│                              │  Load Test JMeter  │ │
+│                              │  500 users / 5000  │ │
+│                              │  requêtes / 0 err  │ │
+│                              └────────────────────┘ │
+└─────────────────────────────────────────────────────┘
+```
+
+### Infrastructure
+
+| Outil | Mode | Accès |
+|---|---|---|
+| **Jenkins** | Docker (`jenkis`) | `http://localhost:9090` |
+| **SonarQube** | Docker (`sonarqube`) | `http://localhost:9000` |
+| **JMeter** | Installé dans le conteneur Jenkins (`/jmeter`) | — |
+| **PostgreSQL** | Local Windows | `localhost:5432` |
+| **Spring Boot** | Local Windows | `localhost:8080` |
+
+> Jenkins utilise `host.docker.internal` pour atteindre les services sur Windows depuis les conteneurs Docker.
+
+### Démarrer Jenkins
+
+```powershell
+# Lancer le conteneur Jenkins (port 9090 → 8080)
+docker start jenkis
+
+# Accéder à Jenkins
+http://localhost:9090
+```
+
+### Démarrer SonarQube
+
+```powershell
+docker start sonarqube
+# Attendre ~90s puis ouvrir http://localhost:9000
+```
+
+### Jenkinsfile — Stages du pipeline
+
+```
+Stage 1 : Build          → mvn clean package -DskipTests
+Stage 2 : Tests          → mvn test -P ci  (191 tests JUnit + MockMvc)
+Stage 3 : Code Coverage  → mvn verify -P ci  (JaCoCo exec + rapport XML)
+Stage 4 : SonarQube      → mvn sonar:sonar  (token via Jenkins Credentials)
+Stage 5 : Load Test      → JMeter 500 threads × 5 loops = 5 000 requêtes
+```
+
+### Profil Maven `ci`
+
+Le profil `-P ci` exclut les tests d'infrastructure (qui nécessitent PostgreSQL ou Docker-in-Docker) :
+
+```xml
+<profile>
+    <id>ci</id>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <exclude>**/PortailWebBackendApplicationTests.java</exclude>
+                        <exclude>**/FlywayMigrationTest.java</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</profile>
+```
+
+### Credentials Jenkins requis
+
+| Credential ID | Type | Description |
+|---|---|---|
+| `sonar-token` | Secret text | Token SonarQube généré dans `My Account → Security` |
+
+### Test de charge — JMeter (`load-test.jmx`)
+
+| Paramètre | Valeur |
+|---|---|
+| Threads (utilisateurs) | 500 |
+| Ramp-up | 10 secondes |
+| Boucles par thread | 5 |
+| Total requêtes | 5 000 |
+| Requête 1 | `POST /api/auth/login` → extraction JWT |
+| Requête 2 | `GET /api/normes` avec `Bearer {jwt_token}` |
+
+---
+
+### Résultats du dernier build (Build #16 — 2026-06-15)
+
+#### Tests
+
+| Classe de test | Tests | Résultat |
+|---|---|---|
+| JwtAuthenticationFilterTest | 6 | PASS |
+| NormeServiceTest | 9 | PASS |
+| ConsultationServiceTest | 4 | PASS |
+| JwtServiceTest | 7 | PASS |
+| LookupServiceTest | 8 | PASS |
+| AbonnementGuardTest | 9 | PASS |
+| GlobalExceptionHandlerTest | 6 | PASS |
+| NormeExcelImportServiceTest | 12 | PASS |
+| UserServiceTest | 15 | PASS |
+| UserAdminServiceTest | 16 | PASS |
+| PlanAbonnementServiceTest | 10 | PASS |
+| AbonnementServiceTest | 8 | PASS |
+| PaiementServiceTest | 7 | PASS |
+| AbonnementIsActifTest | 6 | PASS |
+| NormeControllerMvcTest | 13 | PASS |
+| PlanAbonnementControllerMvcTest | 11 | PASS |
+| AdminUserControllerMvcTest | 11 | PASS |
+| LookupControllerMvcTest | 8 | PASS |
+| AuthControllerMvcTest | 6 | PASS |
+| PaiementControllerMvcTest | 9 | PASS |
+| AbonnementControllerMvcTest | 10 | PASS |
+| **TOTAL** | **191** | **0 failures, 0 errors** |
+
+#### SonarQube Quality Gate
+
+| Métrique | Résultat |
+|---|---|
+| Quality Gate | Passed |
+| Coverage on New Code | ≥ 80% |
+| Bugs | 0 |
+| Vulnerabilities | 0 |
+
+#### JMeter Load Test (500 utilisateurs simultanés)
+
+| Métrique | Valeur |
+|---|---|
+| Total requêtes | 5 000 |
+| Durée | 21 secondes |
+| Débit | 237.7 req/s |
+| Temps de réponse moyen | 1 176 ms |
+| Temps min | 9 ms |
+| Temps max | 4 344 ms |
+| Taux d'erreur | **0.00%** |
+
+#### Statut global
+
+```
+Build    ✅  SUCCESS
+Tests    ✅  191/191 PASS
+Coverage ✅  Quality Gate PASSED
+SonarQube✅  Analyse uploadée
+JMeter   ✅  5000 req — 0 erreurs
+```
+
+---
+
 ## Démarrage
 
 ### Prérequis
