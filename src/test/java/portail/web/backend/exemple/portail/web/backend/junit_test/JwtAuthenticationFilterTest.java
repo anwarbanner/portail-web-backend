@@ -110,6 +110,29 @@ class JwtAuthenticationFilterTest {
     }
 
     @Test
+    void validToken_emptyAuthoritiesFromJwt_fallsBackToUserDetailsAuthorities() throws Exception {
+        UserDetails userDetails = mock(UserDetails.class);
+
+        when(jwtService.extractUsername("valid.token")).thenReturn("alice");
+        when(userDetailsService.loadUserByUsername("alice")).thenReturn(userDetails);
+        when(jwtService.isTokenValid("valid.token", userDetails)).thenReturn(true);
+        when(jwtService.extractAuthorities("valid.token")).thenReturn(List.of());
+        when(userDetails.getAuthorities()).thenReturn(
+                List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
+
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.addHeader("Authorization", "Bearer valid.token");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        MockFilterChain chain = new MockFilterChain();
+
+        filter.doFilter(request, response, chain);
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        assertThat(auth).isNotNull();
+        assertThat(auth.getAuthorities()).extracting("authority").contains("ROLE_ADMIN");
+    }
+
+    @Test
     void validToken_invalidSignature_doesNotAuthenticate() throws Exception {
         UserDetails userDetails = mock(UserDetails.class);
 
